@@ -7,22 +7,17 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { useShallow } from 'zustand/react/shallow';
 import { ScreenContainer } from '../../ui/primitives/ScreenContainer';
-import { Pressable } from '../../ui/primitives/Pressable';
 import { Text } from '../../ui/primitives/Text';
 import { colors, spacing, radii } from '../../ui/tokens';
 import { useQuestStore } from './questStore';
-import type { CategoryType, FilterType, Quest } from './types';
+import type { FilterType, Quest } from './types';
 import FeaturedCarousel from './components/FeaturedCarousel';
 import FilterTabs from './components/FilterTabs';
 import InProgressCard from './components/InProgressCard';
 import QuestCard from './components/QuestCard';
 import { InProgressSkeleton, QuestGridSkeleton } from './components/QuestSkeleton';
-
-const CATEGORIES: { label: string; value: CategoryType }[] = [
-  { label: 'AI Training', value: 'AI' },
-  { label: 'Gaming', value: 'GAMING' },
-];
 
 export default function QuestScreen() {
   const {
@@ -34,23 +29,36 @@ export default function QuestScreen() {
     isRecommendedLoading,
     isLoadingMore,
     hasMore,
-    page,
     fetchFeatured,
     fetchInProgress,
     fetchRecommended,
     clearRecommended,
-  } = useQuestStore();
+  } = useQuestStore(
+    useShallow((s) => ({
+      featured: s.featured,
+      isFeaturedLoading: s.isFeaturedLoading,
+      inProgress: s.inProgress,
+      isInProgressLoading: s.isInProgressLoading,
+      recommended: s.recommended,
+      isRecommendedLoading: s.isRecommendedLoading,
+      isLoadingMore: s.isLoadingMore,
+      hasMore: s.hasMore,
+      fetchFeatured: s.fetchFeatured,
+      fetchInProgress: s.fetchInProgress,
+      fetchRecommended: s.fetchRecommended,
+      clearRecommended: s.clearRecommended,
+    })),
+  );
 
-  const [category, setCategory] = useState<CategoryType>('GAMING');
   const [filter, setFilter] = useState<FilterType>('Live');
   const [refreshing, setRefreshing] = useState(false);
   const isInitialized = useRef(false);
 
   const loadAll = useCallback(
-    (cat: CategoryType, fil: FilterType, pg: number) => {
-      fetchFeatured(cat);
-      fetchInProgress(cat);
-      fetchRecommended({ category: cat, filter: fil, page: pg });
+    (fil: FilterType) => {
+      fetchFeatured('AI');
+      fetchInProgress('AI');
+      fetchRecommended({ category: 'AI', filter: fil });
     },
     [fetchFeatured, fetchInProgress, fetchRecommended],
   );
@@ -58,44 +66,34 @@ export default function QuestScreen() {
   useEffect(() => {
     if (!isInitialized.current) {
       isInitialized.current = true;
-      loadAll(category, filter, 1);
+      loadAll(filter);
     }
-  }, [category, filter, loadAll]);
-
-  const onCategoryChange = useCallback(
-    (cat: CategoryType) => {
-      setCategory(cat);
-      setFilter('Live');
-      clearRecommended();
-      loadAll(cat, 'Live', 1);
-    },
-    [clearRecommended, loadAll],
-  );
+  }, [filter, loadAll]);
 
   const onFilterChange = useCallback(
     (fil: FilterType) => {
       setFilter(fil);
       clearRecommended();
-      fetchRecommended({ category, filter: fil, page: 1 });
+      fetchRecommended({ category: 'AI', filter: fil });
     },
-    [category, clearRecommended, fetchRecommended],
+    [clearRecommended, fetchRecommended],
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     clearRecommended();
     await Promise.allSettled([
-      fetchFeatured(category),
-      fetchInProgress(category),
-      fetchRecommended({ category, filter, page: 1 }),
+      fetchFeatured('AI'),
+      fetchInProgress('AI'),
+      fetchRecommended({ category: 'AI', filter }),
     ]);
     setRefreshing(false);
-  }, [category, filter, clearRecommended, fetchFeatured, fetchInProgress, fetchRecommended]);
+  }, [filter, clearRecommended, fetchFeatured, fetchInProgress, fetchRecommended]);
 
   const onEndReached = useCallback(() => {
     if (!hasMore || isLoadingMore || isRecommendedLoading) return;
-    fetchRecommended({ category, filter, page });
-  }, [category, filter, page, hasMore, isLoadingMore, isRecommendedLoading, fetchRecommended]);
+    fetchRecommended({ category: 'AI', filter });
+  }, [filter, hasMore, isLoadingMore, isRecommendedLoading, fetchRecommended]);
 
   const onQuestPress = useCallback((slug: string) => {
     console.log('[Quest] navigate to:', slug);
@@ -103,31 +101,6 @@ export default function QuestScreen() {
   }, []);
 
   // ─── Sub-renders ────────────────────────────────────────────────────────
-
-  const CategoryTabs = useMemo(
-    () => (
-      <View style={styles.categoryRow}>
-        {CATEGORIES.map((c) => {
-          const active = c.value === category;
-          return (
-            <Pressable
-              key={c.value}
-              accessibilityLabel={`Category: ${c.label}`}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              onPress={() => onCategoryChange(c.value)}
-              style={[styles.categoryTab, active && styles.categoryTabActive]}
-            >
-              <Text variant="pillLabel" style={{ color: active ? colors.surface : colors.text2 }}>
-                {c.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    ),
-    [category, onCategoryChange],
-  );
 
   const InProgressSection = useMemo(() => {
     if (!isInProgressLoading && inProgress.length === 0) return null;
@@ -163,24 +136,23 @@ export default function QuestScreen() {
     () => (
       <View style={styles.recommendedHeader}>
         <Text variant="eyebrow" tone="tertiary">
-          {`QUESTS — ${category === 'AI' ? 'AI TRAINING' : 'GAMING'}`}
+          QUESTS — AI TRAINING
         </Text>
         <FilterTabs selected={filter} onChange={onFilterChange} disabled={isRecommendedLoading} />
       </View>
     ),
-    [category, filter, onFilterChange, isRecommendedLoading],
+    [filter, onFilterChange, isRecommendedLoading],
   );
 
   const ListHeader = useCallback(
     () => (
       <>
-        {CategoryTabs}
         <FeaturedCarousel quests={featured} loading={isFeaturedLoading} onPress={onQuestPress} />
         {InProgressSection}
         {RecommendedHeader}
       </>
     ),
-    [CategoryTabs, featured, isFeaturedLoading, onQuestPress, InProgressSection, RecommendedHeader],
+    [featured, isFeaturedLoading, onQuestPress, InProgressSection, RecommendedHeader],
   );
 
   const ListEmpty = useCallback(
@@ -269,26 +241,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.m,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.line,
-  },
-
-  // Category tabs
-  categoryRow: {
-    flexDirection: 'row',
-    marginHorizontal: spacing.l,
-    marginTop: spacing.md,
-    borderRadius: radii.chip,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  categoryTab: {
-    flex: 1,
-    paddingVertical: spacing.ms,
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-  },
-  categoryTabActive: {
-    backgroundColor: colors.accent,
   },
 
   // In-progress
