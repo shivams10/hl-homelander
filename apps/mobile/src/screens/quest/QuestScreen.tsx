@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../navigation/rootTypes';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,7 +15,10 @@ import { ScreenContainer } from '../../ui/primitives/ScreenContainer';
 import { Text } from '../../ui/primitives/Text';
 import { colors, spacing, radii } from '../../ui/tokens';
 import { useQuestStore } from './questStore';
+import { useQuestProfileStore } from './questProfileStore';
+import { useQuestSelectionStore } from './questSelectionStore';
 import type { FilterType, Quest } from './types';
+import { redirectToAiTrainingQuest } from './utils/redirectToAiTrainingQuest';
 import FeaturedCarousel from './components/FeaturedCarousel';
 import FilterTabs from './components/FilterTabs';
 import InProgressCard from './components/InProgressCard';
@@ -20,6 +26,7 @@ import QuestCard from './components/QuestCard';
 import { InProgressSkeleton, QuestGridSkeleton } from './components/QuestSkeleton';
 
 export default function QuestScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const {
     featured,
     isFeaturedLoading,
@@ -53,6 +60,11 @@ export default function QuestScreen() {
   const [filter, setFilter] = useState<FilterType>('Live');
   const [refreshing, setRefreshing] = useState(false);
   const isInitialized = useRef(false);
+  const fetchQuestProfile = useQuestProfileStore((s) => s.fetchProfile);
+
+  useEffect(() => {
+    void fetchQuestProfile();
+  }, [fetchQuestProfile]);
 
   const loadAll = useCallback(
     (fil: FilterType) => {
@@ -95,10 +107,30 @@ export default function QuestScreen() {
     fetchRecommended({ category: 'AI', filter });
   }, [filter, hasMore, isLoadingMore, isRecommendedLoading, fetchRecommended]);
 
-  const onQuestPress = useCallback((slug: string) => {
-    console.log('[Quest] navigate to:', slug);
-    // navigation.navigate('QuestDetails', { questId: slug });
-  }, []);
+  const questBySlug = useMemo(() => {
+    const map = new Map<string, Quest>();
+    for (const q of [...featured, ...recommended]) {
+      map.set(q.quest_slug, q);
+    }
+    return map;
+  }, [featured, recommended]);
+
+  const setQuestPreview = useQuestSelectionStore((s) => s.setPreview);
+
+  const onQuestPress = useCallback(
+    (slug: string) => {
+      const item = questBySlug.get(slug);
+      if (item?.enableModalUploadValidation) {
+        redirectToAiTrainingQuest(item.questId);
+        return;
+      }
+      setQuestPreview(item ?? null);
+      navigation.navigate('QuestDetails', { questSlug: slug });
+    },
+    [navigation, questBySlug, setQuestPreview],
+  );
+
+  const noopQuestPress = useCallback((_slug: string) => {}, []);
 
   // ─── Sub-renders ────────────────────────────────────────────────────────
 
@@ -124,13 +156,13 @@ export default function QuestScreen() {
             contentContainerStyle={styles.inProgressList}
             ItemSeparatorComponent={() => <View style={{ width: spacing.ms }} />}
             renderItem={({ item }: ListRenderItemInfo<Quest>) => (
-              <InProgressCard data={item} onPress={onQuestPress} />
+              <InProgressCard data={item} onPress={noopQuestPress} />
             )}
           />
         )}
       </View>
     );
-  }, [inProgress, isInProgressLoading, onQuestPress]);
+  }, [inProgress, isInProgressLoading, noopQuestPress]);
 
   const RecommendedHeader = useMemo(
     () => (
